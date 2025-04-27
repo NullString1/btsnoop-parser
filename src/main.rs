@@ -9,13 +9,14 @@ fn main() {
     let file = File::open(file_path).expect("Failed to open file");
 
     let btsnoop_file = parse_btsnoop_file(file).expect("Failed to parse btsnoop file");
-    println!("Parsed {} write packets", btsnoop_file.packets.len());
+    println!("Parsed {} write and notification packets", btsnoop_file.packets.len());
     for packet in btsnoop_file.packets {
         let ascii_str = String::from_utf8_lossy(&packet.packet_data);
         let ascii_str = ascii_str.trim().trim_ascii();
         let ascii_str: String = ascii_str.chars().filter(|c| c.is_ascii_graphic() || c.is_ascii_whitespace()).collect();
         println!("Packet Number: {}", packet.packet_number);
-        println!("Packet Data: {}", ascii_str);
+        println!("Packet Type: {:?}", packet.att_header.command);
+        println!("Packet Data: {}\n", ascii_str);
     }
 }
 
@@ -57,9 +58,16 @@ struct L2CAPacketHeader {
     pub channel_id: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ATTCommand {
+    None = 0x00,
+    WriteCommand = 0x52,
+    HandleValueNotification = 0x1b,
+}
+
 #[derive(Debug, Clone)]
 struct ATTHeader {
-    pub command: u8,
+    pub command: ATTCommand,
     pub handle: u16,
     pub data: Vec<u8>,
 }
@@ -168,16 +176,19 @@ fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>> {
         l2cap_header.channel_id = u16::from_le_bytes(buffer);
 
         let mut att_header = ATTHeader {
-            command: 0,
+            command: ATTCommand::None,
             handle: 0,
             data: Vec::new(),
         };
         let mut buffer = [0u8; 1];
         file.read_exact(&mut buffer)?;
-        att_header.command = buffer[0];
+        att_header.command = match buffer[0] {
+            0x52 => ATTCommand::WriteCommand,
+            0x1b => ATTCommand::HandleValueNotification,
+            _ => ATTCommand::None,
+        };
 
-        if att_header.command != 0x52 {
-            //println!("Skipping non-write command");
+        if att_header.command != ATTCommand::WriteCommand && att_header.command != ATTCommand::HandleValueNotification {
             file.seek(std::io::SeekFrom::Current(
                 (packet_header.included_length - 10) as i64,
             ))?;
