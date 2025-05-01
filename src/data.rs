@@ -63,11 +63,89 @@ pub struct L2CAPacketHeader {
     pub channel_id: u16,
 }
 
+impl Default for L2CAPacketHeader {
+    fn default() -> Self {
+        Self {
+            length: 0,
+            channel_id: 0,
+        }
+    }
+}
+
+/// ATT Protocol Operation Codes as defined in Bluetooth Core Specification
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum ATTCommand {
-    None = 0x00,
+    None,
+    ErrorResponse = 0x01,
+    ExchangeMTURequest = 0x02,
+    ExchangeMTUResponse = 0x03,
+    FindInformationRequest = 0x04,
+    FindInformationResponse = 0x05,
+    FindByTypeValueRequest = 0x06,
+    FindByTypeValueResponse = 0x07,
+    ReadByTypeRequest = 0x08,
+    ReadByTypeResponse = 0x09,
+    ReadRequest = 0x0A,
+    ReadResponse = 0x0B,
+    ReadBlobRequest = 0x0C,
+    ReadBlobResponse = 0x0D,
+    ReadMultipleRequest = 0x0E,
+    ReadMultipleResponse = 0x0F,
+    ReadByGroupTypeRequest = 0x10,
+    ReadByGroupTypeResponse = 0x11,
+    WriteRequest = 0x12,
+    WriteResponse = 0x13,
     WriteCommand = 0x52,
-    HandleValueNotification = 0x1b,
+    SignedWriteCommand = 0xD2,
+    PrepareWriteRequest = 0x16,
+    PrepareWriteResponse = 0x17,
+    ExecuteWriteRequest = 0x18,
+    ExecuteWriteResponse = 0x19,
+    HandleValueNotification = 0x1B,
+    HandleValueIndication = 0x1D,
+    HandleValueConfirmation = 0x1E,
+}
+
+impl Default for ATTCommand {
+    fn default() -> Self {
+        ATTCommand::None
+    }
+}
+
+impl From<u8> for ATTCommand {
+    fn from(value: u8) -> Self {
+        match value {
+            0x01 => ATTCommand::ErrorResponse,
+            0x02 => ATTCommand::ExchangeMTURequest,
+            0x03 => ATTCommand::ExchangeMTUResponse,
+            0x04 => ATTCommand::FindInformationRequest,
+            0x05 => ATTCommand::FindInformationResponse,
+            0x06 => ATTCommand::FindByTypeValueRequest,
+            0x07 => ATTCommand::FindByTypeValueResponse,
+            0x08 => ATTCommand::ReadByTypeRequest,
+            0x09 => ATTCommand::ReadByTypeResponse,
+            0x0A => ATTCommand::ReadRequest,
+            0x0B => ATTCommand::ReadResponse,
+            0x0C => ATTCommand::ReadBlobRequest,
+            0x0D => ATTCommand::ReadBlobResponse,
+            0x0E => ATTCommand::ReadMultipleRequest,
+            0x0F => ATTCommand::ReadMultipleResponse,
+            0x10 => ATTCommand::ReadByGroupTypeRequest,
+            0x11 => ATTCommand::ReadByGroupTypeResponse,
+            0x12 => ATTCommand::WriteRequest,
+            0x13 => ATTCommand::WriteResponse,
+            0x52 => ATTCommand::WriteCommand,
+            0xD2 => ATTCommand::SignedWriteCommand,
+            0x16 => ATTCommand::PrepareWriteRequest,
+            0x17 => ATTCommand::PrepareWriteResponse,
+            0x18 => ATTCommand::ExecuteWriteRequest,
+            0x19 => ATTCommand::ExecuteWriteResponse,
+            0x1B => ATTCommand::HandleValueNotification,
+            0x1D => ATTCommand::HandleValueIndication,
+            0x1E => ATTCommand::HandleValueConfirmation,
+            _ => ATTCommand::None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -75,6 +153,16 @@ pub struct ATTHeader {
     pub command: ATTCommand,
     pub handle: u16,
     pub data: Vec<u8>,
+}
+
+impl Default for ATTHeader {
+    fn default() -> Self {
+        Self {
+            command: ATTCommand::None,
+            handle: 0,
+            data: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

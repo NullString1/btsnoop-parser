@@ -29,9 +29,15 @@ mod tests {
         let btsnoop_file_path = "btsnoop_hci.log";
         let file = std::fs::read(btsnoop_file_path)?;
         let btsnoop_file = parse_btsnoop_file(file)?;
-        let packet = btsnoop_file.packets.first().unwrap_or_else(|| {
-            panic!("No packets found in the btsnoop file");
-        });
+        let packet = btsnoop_file
+            .packets
+            .iter()
+            .filter(|packet| packet.packet_number == 18650)
+            .next()
+            .unwrap_or_else(|| {
+                println!("File: {:?}", btsnoop_file);
+                panic!("Test packet not found in btsnoop file");
+            });
         assert_eq!(packet.header.original_length, 30);
         assert_eq!(packet.header.included_length, 30);
         assert_eq!(packet.header.packet_flags, 0);
