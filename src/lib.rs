@@ -1,80 +1,31 @@
+mod data;
+
+#[cfg(test)]
 mod tests;
 
+#[cfg(target_os = "android")]
+mod android;
+
+use data::*;
 use std::{
     error::Error,
-    fs::File,
-    io::{Read, Seek},
+    io::{Cursor, Read, Seek},
 };
 
-#[derive(Debug, Clone, Copy)]
-pub struct FileHeader {
-    pub identifier: [u8; 8],
-    pub version: u32,
-    pub data_link_type: u32,
+fn seek_to_next_packet(
+    file: &mut Cursor<Vec<u8>>,
+    start_position: u64,
+    packet_header: &RawPacketHeader,
+) -> Result<(), Box<dyn Error>> {
+    let seek = packet_header.included_length as i64
+        - (file.stream_position()? as i64 - start_position as i64);
+    file.seek(std::io::SeekFrom::Current(seek))?;
+    Ok(())
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct RawPacketHeader {
-    pub original_length: u32,
-    pub included_length: u32,
-    pub packet_flags: u32,
-    pub cumulative_drops: u32,
-    pub timestamp_microseconds: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum HciPacketType {
-    None = 0x00,
-    Command = 0x01,
-    Event = 0x04,
-    ACLData = 0x02,
-    SCOData = 0x03,
-}
-
-#[derive(Debug, Clone)]
-pub struct BluetoothHCIHeader {
-    pub hci_packet_type: HciPacketType,
-    pub command: u16,
-    pub data_total_length: u16,
-}
-
-#[derive(Debug, Clone)]
-pub struct L2CAPacketHeader {
-    pub length: u16,
-    pub channel_id: u16,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ATTCommand {
-    None = 0x00,
-    WriteCommand = 0x52,
-    HandleValueNotification = 0x1b,
-}
-
-#[derive(Debug, Clone)]
-pub struct ATTHeader {
-    pub command: ATTCommand,
-    pub handle: u16,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PacketRecord {
-    pub header: RawPacketHeader,
-    pub hci_header: BluetoothHCIHeader,
-    pub l2cap_header: L2CAPacketHeader,
-    pub att_header: ATTHeader,
-    pub packet_data: Vec<u8>,
-    pub packet_number: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct BTSnoopFile {
-    pub header: FileHeader,
-    pub packets: Vec<PacketRecord>,
-}
-
-pub fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>> {
+pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>> {
+    let mut connection_handle_address_map = std::collections::HashMap::new();
+    let mut file = Cursor::new(bytes);
     let mut header = FileHeader {
         identifier: [0u8; 8],
         version: 0,
@@ -90,16 +41,16 @@ pub fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>>
         return Err("Invalid btsnoop file".into());
     }
     let mut packets = Vec::new();
-    let length = file.metadata()?.len();
+    let length = file.get_ref().len();
     let mut counter = 0;
-    while file.stream_position()? < length {
+    while file.stream_position()? < length.try_into().unwrap() {
         counter += 1;
         let mut packet_header = RawPacketHeader {
             original_length: 0,
             included_length: 0,
             packet_flags: 0,
             cumulative_drops: 0,
-            timestamp_microseconds: 0,
+            timestamp_milliseconds: 0,
         };
 
         let mut buffer = [0u8; 4];
@@ -118,13 +69,14 @@ pub fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>>
 
         let mut buffer_8 = [0u8; 8];
         file.read_exact(&mut buffer_8)?;
-        packet_header.timestamp_microseconds = u64::from_be_bytes(buffer_8);
+        packet_header.timestamp_milliseconds = u64::from_be_bytes(buffer_8);
 
         let mut hci_header = BluetoothHCIHeader {
             hci_packet_type: HciPacketType::None,
-            command: 0,
+            hci_handle: HCIHandle(0),
             data_total_length: 0,
         };
+        let start_position = file.stream_position()?;
 
         let mut buffer = [0u8; 1];
         file.read_exact(&mut buffer)?;
@@ -135,15 +87,43 @@ pub fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>>
             0x03 => HciPacketType::SCOData,
             _ => HciPacketType::None,
         };
+        if hci_header.hci_packet_type == HciPacketType::Event {
+            let mut event_code = [0u8; 1];
+            file.read_exact(&mut event_code)?;
+            if event_code[0] == 0x3E {
+                // Is Le Meta
+                file.seek(std::io::SeekFrom::Current(1))?; // Skip the parameter length
+                let mut sub_event_code = [0u8; 1];
+                file.read_exact(&mut sub_event_code)?;
+                if sub_event_code[0] == 0x0a {
+                    // Is LE Enhanced Connection Complete
+                    let mut status = [0u8; 1];
+                    file.read_exact(&mut status)?;
+                    if status[0] == 0x00 {
+                        // Is Success
+                        let mut handle = [0u8; 2];
+                        file.read_exact(&mut handle)?;
+                        let mut role = [0u8; 1];
+                        file.read_exact(&mut role)?;
+                        let mut peer_address_type = [0u8; 1];
+                        file.read_exact(&mut peer_address_type)?;
+                        let mut peer_address = [0u8; 6];
+                        file.read_exact(&mut peer_address)?;
+                        connection_handle_address_map
+                            .insert(u16::from_le_bytes(handle), peer_address);
+                    }
+                }
+            }
+            seek_to_next_packet(&mut file, start_position, &packet_header)?;
+            continue;
+        }
         if hci_header.hci_packet_type != HciPacketType::ACLData {
-            file.seek(std::io::SeekFrom::Current(
-                (packet_header.included_length - 1) as i64,
-            ))?;
+            seek_to_next_packet(&mut file, start_position, &packet_header)?;
             continue;
         }
         let mut buffer = [0u8; 2];
         file.read_exact(&mut buffer)?;
-        hci_header.command = u16::from_be_bytes(buffer);
+        hci_header.hci_handle = HCIHandle(u16::from_le_bytes(buffer));
 
         file.read_exact(&mut buffer)?;
         hci_header.data_total_length = u16::from_le_bytes(buffer);
@@ -174,9 +154,7 @@ pub fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>>
         if att_header.command != ATTCommand::WriteCommand
             && att_header.command != ATTCommand::HandleValueNotification
         {
-            file.seek(std::io::SeekFrom::Current(
-                (packet_header.included_length - 10) as i64,
-            ))?;
+            seek_to_next_packet(&mut file, start_position, &packet_header)?;
             continue;
         }
 
@@ -195,8 +173,16 @@ pub fn parse_btsnoop_file(mut file: File) -> Result<BTSnoopFile, Box<dyn Error>>
             att_header: att_header,
             packet_data: packet_data,
             packet_number: counter,
+            dest_addr: connection_handle_address_map
+                .get(&hci_header.hci_handle.handle())
+                .cloned()
+                .unwrap_or([0; 6]),
         });
     }
 
-    Ok(BTSnoopFile { header, packets })
+    Ok(BTSnoopFile {
+        header,
+        packets,
+        handle_addr_map: connection_handle_address_map,
+    })
 }
