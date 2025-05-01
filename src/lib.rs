@@ -270,8 +270,8 @@ impl PacketStream {
             return Ok(Some(PacketRecord {
                 header: packet_header,
                 hci_header,
-                l2cap_header: L2CAPacketHeader::default(),
-                att_header: ATTHeader::default(),
+                l2cap_header: None,
+                att_header: None,
                 packet_data: Vec::new(),
                 packet_number: self.packet_count,
                 dest_addr: [0; 6],
@@ -282,7 +282,7 @@ impl PacketStream {
         // For ACL Data packets, read L2CAP and ATT headers
         let (l2cap_header, mut att_header) = if hci_header.hci_packet_type == HciPacketType::ACLData
         {
-            (self.read_l2cap_header()?, self.read_att_header()?)
+            (Some(self.read_l2cap_header()?), Some(self.read_att_header()?))
         } else {
             // For non-ACL packets, skip to the end of packet
             let skip_to = start_position + packet_header.included_length as u64;
@@ -290,8 +290,8 @@ impl PacketStream {
             return Ok(Some(PacketRecord {
                 header: packet_header,
                 hci_header,
-                l2cap_header: L2CAPacketHeader::default(),
-                att_header: ATTHeader::default(),
+                l2cap_header: None,
+                att_header: None,
                 packet_data: Vec::new(),
                 packet_number: self.packet_count,
                 dest_addr: [0; 6],
@@ -299,7 +299,6 @@ impl PacketStream {
             }));
         };
 
-        // Read remaining packet data
         let current_position = self.position()?;
         let total_packet_size = packet_header.included_length as u64;
         let headers_size = current_position - start_position;
@@ -311,7 +310,9 @@ impl PacketStream {
         let data_size = total_packet_size - headers_size;
         let mut packet_data = vec![0u8; data_size as usize];
         self.read_exact(&mut packet_data)?;
-        att_header.data = packet_data.clone();
+        if let Some(ref mut att_header) = att_header {
+            att_header.data = packet_data.clone();
+        }
 
         Ok(Some(PacketRecord {
             header: packet_header,
@@ -349,9 +350,7 @@ impl Iterator for PacketStream {
 pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, BTSnoopError> {
     let mut packet_stream = PacketStream::new(bytes);
     let header = packet_stream.read_header()?;
-    //packet_stream.next_packet()?;
     let packets = packet_stream.by_ref().collect::<Result<Vec<_>, _>>()?;
-    //let mut packets = Vec::new();
     let handle_addr_map = packet_stream.connection_handles;
 
     Ok(BTSnoopFile {

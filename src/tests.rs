@@ -49,11 +49,11 @@ mod tests {
         assert_eq!(packet.hci_header.hci_handle.pb_flags(), 0);
         assert_eq!(packet.hci_header.hci_handle.handle(), 0x206);
         assert_eq!(packet.hci_header.data_total_length, 25);
-        assert_eq!(packet.l2cap_header.length, 21);
-        assert_eq!(packet.l2cap_header.channel_id, 4);
-        assert_eq!(packet.att_header.command, ATTCommand::WriteCommand);
-        assert_eq!(packet.att_header.handle, 64);
-        assert!(packet.att_header.data.len() > 5);
+        assert_eq!(packet.l2cap_header.as_ref().map(|f| f.length), Some(21));
+        assert_eq!(packet.l2cap_header.as_ref().map(|f| f.channel_id), Some(4));
+        assert_eq!(packet.att_header.as_ref().map(|f| f.command), Some(ATTCommand::WriteCommand));
+        assert_eq!(packet.att_header.as_ref().map(|f| f.handle), Some(64));
+        assert!(packet.att_header.as_ref().map(|f| f.data.len()).unwrap_or(0) > 5);
         assert_eq!(packet.packet_number, 18650);
         assert!(btsnoop_file.handle_addr_map.contains_key(&512));
         assert_eq!(
@@ -61,7 +61,7 @@ mod tests {
             &[242, 41, 45, 141, 249, 212]
         );
         assert_eq!(packet.mac_address(), "d4:f9:8d:20:95:a6");
-        println!("Parsed packet: {}", packet);
+        println!("Parsed packet: {:?}", packet);
         Ok(())
     }
 }

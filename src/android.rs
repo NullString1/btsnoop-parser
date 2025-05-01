@@ -44,8 +44,8 @@ unsafe extern "system" fn parse_impl(
         Ok(mut parsed_file) => {
             if write_and_hvn_only == jni::sys::JNI_TRUE {
                 parsed_file.packets.retain(|packet| {
-                    packet.att_header.command == ATTCommand::WriteCommand
-                        || packet.att_header.command == ATTCommand::HandleValueNotification
+                    packet.att_header.as_ref().map(|f| f.command) == Some(ATTCommand::WriteCommand)
+                        || packet.att_header.as_ref().map(|f| f.command) == Some(ATTCommand::HandleValueNotification)
                 });
             }
             if sort_by_timestamp == jni::sys::JNI_TRUE {

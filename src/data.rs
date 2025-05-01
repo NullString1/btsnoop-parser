@@ -12,6 +12,16 @@ pub struct FileHeader {
     pub data_link_type: u32,
 }
 
+impl Default for FileHeader {
+    fn default() -> Self {
+        Self {
+            identifier: [0u8; 8],
+            version: 0,
+            data_link_type: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct RawPacketHeader {
     pub original_length: u32,
@@ -19,6 +29,18 @@ pub struct RawPacketHeader {
     pub packet_flags: u32,
     pub cumulative_drops: u32,
     pub timestamp_milliseconds: u64,
+}
+
+impl Default for RawPacketHeader {
+    fn default() -> Self {
+        Self {
+            original_length: 0,
+            included_length: 0,
+            packet_flags: 0,
+            cumulative_drops: 0,
+            timestamp_milliseconds: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -152,6 +174,7 @@ impl From<u8> for ATTCommand {
 pub struct ATTHeader {
     pub command: ATTCommand,
     pub handle: u16,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub data: Vec<u8>,
 }
 
@@ -169,9 +192,11 @@ impl Default for ATTHeader {
 pub struct PacketRecord {
     pub header: RawPacketHeader,
     pub hci_header: BluetoothHCIHeader,
-    pub l2cap_header: L2CAPacketHeader,
-    pub att_header: ATTHeader,
+    pub l2cap_header: Option<L2CAPacketHeader>,
+    pub att_header: Option<ATTHeader>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub packet_data: Vec<u8>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub packet_data_str: String,
     pub packet_number: u32,
     pub dest_addr: [u8; 6],
@@ -197,7 +222,7 @@ impl Display for PacketRecord {
             "PacketRecord {{ packet_number: {}, dest_addr: {}, att_command: {:?}, data: \"{}\" }}",
             self.packet_number,
             self.mac_address(),
-            self.att_header.command,
+            self.att_header.as_ref().map(|h| h.command),
             self.packet_data_str
                 .chars()
                 .take(20)
@@ -214,4 +239,19 @@ pub struct BTSnoopFile {
     pub header: FileHeader,
     pub packets: Vec<PacketRecord>,
     pub handle_addr_map: HashMap<u16, [u8; 6]>,
+}
+
+impl BTSnoopFile {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            header: FileHeader::default(),
+            packets: Vec::with_capacity(capacity),
+            handle_addr_map: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.packets.clear();
+        self.handle_addr_map.clear();
+    }
 }
