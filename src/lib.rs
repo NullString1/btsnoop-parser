@@ -23,23 +23,72 @@ fn seek_to_next_packet(
     Ok(())
 }
 
+fn read_unsigned_be<T>(file: &mut Cursor<Vec<u8>>, size: u8) -> Result<T, Box<dyn Error>>
+where
+    T: TryFrom<u8> + TryFrom<u16> + TryFrom<u32> + TryFrom<u64>,
+    <T as TryFrom<u8>>::Error: std::error::Error + 'static,
+    <T as TryFrom<u16>>::Error: std::error::Error + 'static,
+    <T as TryFrom<u32>>::Error: std::error::Error + 'static,
+    <T as TryFrom<u64>>::Error: std::error::Error + 'static,
+{
+    let mut buffer = vec![0u8; size as usize];
+    file.read_exact(&mut buffer)?;
+
+    match size {
+        1 => Ok(T::try_from(buffer[0])?),
+        2 => Ok(T::try_from(u16::from_be_bytes([buffer[0], buffer[1]]))?),
+        4 => Ok(T::try_from(u32::from_be_bytes([
+            buffer[0], buffer[1], buffer[2], buffer[3],
+        ]))?),
+        8 => Ok(T::try_from(u64::from_be_bytes([
+            buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7],
+        ]))?),
+        _ => Err("Invalid size".into()),
+    }
+}
+
+fn read_unsigned_le<T>(file: &mut Cursor<Vec<u8>>, size: u8) -> Result<T, Box<dyn Error>>
+where
+    T: TryFrom<u8> + TryFrom<u16> + TryFrom<u32> + TryFrom<u64>,
+    <T as TryFrom<u8>>::Error: std::error::Error + 'static,
+    <T as TryFrom<u16>>::Error: std::error::Error + 'static,
+    <T as TryFrom<u32>>::Error: std::error::Error + 'static,
+    <T as TryFrom<u64>>::Error: std::error::Error + 'static,
+{
+    let mut buffer = vec![0u8; size as usize];
+    file.read_exact(&mut buffer)?;
+
+    match size {
+        1 => Ok(T::try_from(buffer[0])?),
+        2 => Ok(T::try_from(u16::from_le_bytes([buffer[0], buffer[1]]))?),
+        4 => Ok(T::try_from(u32::from_le_bytes([
+            buffer[0], buffer[1], buffer[2], buffer[3],
+        ]))?),
+        8 => Ok(T::try_from(u64::from_le_bytes([
+            buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7],
+        ]))?),
+        _ => Err("Invalid size".into()),
+    }
+}
+
 pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>> {
     let mut connection_handle_address_map = std::collections::HashMap::new();
     let mut file = Cursor::new(bytes);
+
     let mut header = FileHeader {
         identifier: [0u8; 8],
         version: 0,
         data_link_type: 0,
     };
+
     file.read_exact(&mut header.identifier)?;
-    let mut buffer = [0u8; 4];
-    file.read_exact(&mut buffer)?;
-    header.version = u32::from_be_bytes(buffer);
-    file.read_exact(&mut buffer)?;
-    header.data_link_type = u32::from_be_bytes(buffer);
+    header.version = read_unsigned_be(&mut file, 4)?;
+    header.data_link_type = read_unsigned_be(&mut file, 4)?;
+
     if header.identifier != *b"btsnoop\0" {
         return Err("Invalid btsnoop file".into());
     }
+
     let mut packets = Vec::new();
     let length = file.get_ref().len();
     let mut counter = 0;
@@ -53,23 +102,11 @@ pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>>
             timestamp_milliseconds: 0,
         };
 
-        let mut buffer = [0u8; 4];
-
-        file.read_exact(&mut buffer)?;
-        packet_header.original_length = u32::from_be_bytes(buffer);
-
-        file.read_exact(&mut buffer)?;
-        packet_header.included_length = u32::from_be_bytes(buffer);
-
-        file.read_exact(&mut buffer)?;
-        packet_header.packet_flags = u32::from_be_bytes(buffer);
-
-        file.read_exact(&mut buffer)?;
-        packet_header.cumulative_drops = u32::from_be_bytes(buffer);
-
-        let mut buffer_8 = [0u8; 8];
-        file.read_exact(&mut buffer_8)?;
-        packet_header.timestamp_milliseconds = u64::from_be_bytes(buffer_8);
+        packet_header.original_length = read_unsigned_be(&mut file, 4)?;
+        packet_header.included_length = read_unsigned_be(&mut file, 4)?;
+        packet_header.packet_flags = read_unsigned_be(&mut file, 4)?;
+        packet_header.cumulative_drops = read_unsigned_be(&mut file, 4)?;
+        packet_header.timestamp_milliseconds = read_unsigned_be(&mut file, 8)?;
 
         let mut hci_header = BluetoothHCIHeader {
             hci_packet_type: HciPacketType::None,
@@ -78,9 +115,7 @@ pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>>
         };
         let start_position = file.stream_position()?;
 
-        let mut buffer = [0u8; 1];
-        file.read_exact(&mut buffer)?;
-        hci_header.hci_packet_type = match buffer[0] {
+        hci_header.hci_packet_type = match read_unsigned_le::<u8>(&mut file, 1)? {
             0x01 => HciPacketType::Command,
             0x04 => HciPacketType::Event,
             0x02 => HciPacketType::ACLData,
@@ -88,29 +123,22 @@ pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>>
             _ => HciPacketType::None,
         };
         if hci_header.hci_packet_type == HciPacketType::Event {
-            let mut event_code = [0u8; 1];
-            file.read_exact(&mut event_code)?;
-            if event_code[0] == 0x3E {
+            let event_code = read_unsigned_le::<u8>(&mut file, 1)?;
+            if event_code == 0x3E {
                 // Is Le Meta
                 file.seek(std::io::SeekFrom::Current(1))?; // Skip the parameter length
-                let mut sub_event_code = [0u8; 1];
-                file.read_exact(&mut sub_event_code)?;
-                if sub_event_code[0] == 0x0a {
+                let sub_event_code = read_unsigned_le::<u8>(&mut file, 1)?;
+                if sub_event_code == 0x0a {
                     // Is LE Enhanced Connection Complete
-                    let mut status = [0u8; 1];
-                    file.read_exact(&mut status)?;
-                    if status[0] == 0x00 {
+                    let status = read_unsigned_le::<u8>(&mut file, 1)?;
+                    if status == 0x00 {
                         // Is Success
-                        let mut handle = [0u8; 2];
-                        file.read_exact(&mut handle)?;
-                        let mut role = [0u8; 1];
-                        file.read_exact(&mut role)?;
-                        let mut peer_address_type = [0u8; 1];
-                        file.read_exact(&mut peer_address_type)?;
+                        let handle = read_unsigned_le::<u16>(&mut file, 2)?;
+                        let _role = read_unsigned_le::<u8>(&mut file, 1)?;
+                        let _peer_address_type = read_unsigned_le::<u8>(&mut file, 1)?;
                         let mut peer_address = [0u8; 6];
                         file.read_exact(&mut peer_address)?;
-                        connection_handle_address_map
-                            .insert(u16::from_le_bytes(handle), peer_address);
+                        connection_handle_address_map.insert(handle, peer_address);
                     }
                 }
             }
@@ -121,31 +149,24 @@ pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>>
             seek_to_next_packet(&mut file, start_position, &packet_header)?;
             continue;
         }
-        let mut buffer = [0u8; 2];
-        file.read_exact(&mut buffer)?;
-        hci_header.hci_handle = HCIHandle(u16::from_le_bytes(buffer));
+        hci_header.hci_handle = HCIHandle(read_unsigned_le::<u16>(&mut file, 2)?);
 
-        file.read_exact(&mut buffer)?;
-        hci_header.data_total_length = u16::from_le_bytes(buffer);
+        hci_header.data_total_length = read_unsigned_le::<u16>(&mut file, 2)?;
 
         let mut l2cap_header = L2CAPacketHeader {
             length: 0,
             channel_id: 0,
         };
-        let mut buffer = [0u8; 2];
-        file.read_exact(&mut buffer)?;
-        l2cap_header.length = u16::from_le_bytes(buffer);
-        file.read_exact(&mut buffer)?;
-        l2cap_header.channel_id = u16::from_le_bytes(buffer);
+
+        l2cap_header.length = read_unsigned_le::<u16>(&mut file, 2)?;
+        l2cap_header.channel_id = read_unsigned_le::<u16>(&mut file, 2)?;
 
         let mut att_header = ATTHeader {
             command: ATTCommand::None,
             handle: 0,
             data: Vec::new(),
         };
-        let mut buffer = [0u8; 1];
-        file.read_exact(&mut buffer)?;
-        att_header.command = match buffer[0] {
+        att_header.command = match read_unsigned_le::<u8>(&mut file, 1)? {
             0x52 => ATTCommand::WriteCommand,
             0x1b => ATTCommand::HandleValueNotification,
             _ => ATTCommand::None,
@@ -158,11 +179,14 @@ pub fn parse_btsnoop_file(bytes: Vec<u8>) -> Result<BTSnoopFile, Box<dyn Error>>
             continue;
         }
 
-        let mut buffer = [0u8; 2];
-        file.read_exact(&mut buffer)?;
-        att_header.handle = u16::from_le_bytes(buffer);
+        att_header.handle = read_unsigned_le::<u16>(&mut file, 2)?;
 
-        let mut packet_data = vec![0u8; (packet_header.included_length - 12) as usize];
+        let mut packet_data = vec![
+            0u8;
+            (packet_header.included_length as i64
+                - (file.stream_position()? as i64 - start_position as i64))
+                as usize
+        ];
         file.read_exact(&mut packet_data)?;
         att_header.data = packet_data.clone();
 
