@@ -172,6 +172,7 @@ pub struct PacketRecord {
     pub l2cap_header: L2CAPacketHeader,
     pub att_header: ATTHeader,
     pub packet_data: Vec<u8>,
+    pub packet_data_str: String,
     pub packet_number: u32,
     pub dest_addr: [u8; 6],
 }
@@ -191,23 +192,19 @@ impl PacketRecord {
 }
 impl Display for PacketRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let data_str = match std::str::from_utf8(&self.packet_data) {
-            Ok(s) => s.to_string(),
-            Err(_) => self
-                .packet_data
-                .iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<Vec<_>>()
-                .join(" "),
-        };
-
         write!(
             f,
             "PacketRecord {{ packet_number: {}, dest_addr: {}, att_command: {:?}, data: \"{}\" }}",
             self.packet_number,
             self.mac_address(),
             self.att_header.command,
-            data_str
+            self.packet_data_str
+                .chars()
+                .take(20)
+                .collect::<String>()
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
         )
     }
 }

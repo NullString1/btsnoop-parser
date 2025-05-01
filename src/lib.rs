@@ -275,6 +275,7 @@ impl PacketStream {
                 packet_data: Vec::new(),
                 packet_number: self.packet_count,
                 dest_addr: [0; 6],
+                packet_data_str: String::new(),
             }));
         }
 
@@ -294,6 +295,7 @@ impl PacketStream {
                 packet_data: Vec::new(),
                 packet_number: self.packet_count,
                 dest_addr: [0; 6],
+                packet_data_str: String::new(),
             }));
         };
 
@@ -313,10 +315,11 @@ impl PacketStream {
 
         Ok(Some(PacketRecord {
             header: packet_header,
-            hci_header,
-            l2cap_header,
-            att_header,
-            packet_data,
+            hci_header: hci_header,
+            l2cap_header: l2cap_header,
+            att_header: att_header,
+            packet_data_str: std::string::String::from_utf8_lossy(&packet_data).to_string(),
+            packet_data: packet_data,
             packet_number: self.packet_count,
             dest_addr: self
                 .connection_handles
