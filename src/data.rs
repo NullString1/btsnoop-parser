@@ -43,6 +43,18 @@ impl Default for RawPacketHeader {
     }
 }
 
+impl RawPacketHeader{
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(24);
+        bytes.extend_from_slice(&self.original_length.to_le_bytes());
+        bytes.extend_from_slice(&self.included_length.to_le_bytes());
+        bytes.extend_from_slice(&self.packet_flags.to_le_bytes());
+        bytes.extend_from_slice(&self.cumulative_drops.to_le_bytes());
+        bytes.extend_from_slice(&self.timestamp_milliseconds.to_le_bytes());
+        bytes
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum HciPacketType {
     None = 0x00,

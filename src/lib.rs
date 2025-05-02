@@ -30,8 +30,8 @@ impl std::fmt::Display for BTSnoopError {
 }
 
 impl From<std::io::Error> for BTSnoopError {
-    fn from(err: std::io::Error) -> Self {
-        BTSnoopError::IoError(err)
+    fn from(error: std::io::Error) -> Self {
+        BTSnoopError::IoError(error)
     }
 }
 

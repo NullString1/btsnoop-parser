@@ -29,6 +29,7 @@
             pkgs.libxml2
             pkgs.lldb
             pkgs.wireshark
+            pkgs.lldb
           ];
         };
       });
