@@ -43,7 +43,7 @@ impl Default for RawPacketHeader {
     }
 }
 
-impl RawPacketHeader{
+impl RawPacketHeader {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(24);
         bytes.extend_from_slice(&self.original_length.to_le_bytes());

@@ -174,11 +174,7 @@ impl PacketStream {
         Ok((hci_header, start_position))
     }
 
-    fn handle_event(
-        &mut self,
-        packet_header: &RawPacketHeader,
-        start_position: u64,
-    ) -> Result<bool, BTSnoopError> {
+    fn handle_event(&mut self, packet_header: &RawPacketHeader) -> Result<bool, BTSnoopError> {
         if packet_header.included_length < 3 {
             // Minimum size for event code + param length + subevent
             return Err(BTSnoopError::InvalidFile("Event packet too small"));
@@ -190,14 +186,7 @@ impl PacketStream {
             return Ok(false);
         }
 
-        let param_length = self.read_le::<1, u8>()?;
-        let expected_position = start_position + packet_header.included_length as u64;
-
-        if param_length as u64 > (expected_position - self.position()?) {
-            return Err(BTSnoopError::InvalidFile(
-                "Event parameter length exceeds packet size",
-            ));
-        }
+        let _param_length = self.read_le::<1, u8>()?;
 
         let sub_event_code = self.read_le::<1, u8>()?;
         if sub_event_code != 0x0a {
@@ -262,7 +251,7 @@ impl PacketStream {
         // Process events to build connection handle map
         if hci_header.hci_packet_type == HciPacketType::Event {
             // Handle the event but don't skip the packet
-            let _ = self.handle_event(&packet_header, start_position);
+            self.handle_event(&packet_header)?;
             // Make sure we're at the right position after event processing
             self.seek(std::io::SeekFrom::Start(
                 start_position + packet_header.included_length as u64,
@@ -282,7 +271,10 @@ impl PacketStream {
         // For ACL Data packets, read L2CAP and ATT headers
         let (l2cap_header, mut att_header) = if hci_header.hci_packet_type == HciPacketType::ACLData
         {
-            (Some(self.read_l2cap_header()?), Some(self.read_att_header()?))
+            (
+                Some(self.read_l2cap_header()?),
+                Some(self.read_att_header()?),
+            )
         } else {
             // For non-ACL packets, skip to the end of packet
             let skip_to = start_position + packet_header.included_length as u64;
