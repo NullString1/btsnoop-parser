@@ -148,7 +148,7 @@ BTSnoopFile result = BTSnoopParser.parseBTSnoopFile(bytes);
 - Prepare Write Response (0x17) - No parsing yet
 - Execute Write Request (0x18) - No parsing yet
 - Execute Write Response (0x19) - No parsing yet
-- Handle Value Notification (0x1B) - Parsed as message back from other device - No parsing yet
+- Handle Value Notification (0x1B) - Parsed as message back from other device
 - Handle Value Indication (0x1D) - No parsing yet
 - Handle Value Confirmation (0x1E) - No parsing yet
 
