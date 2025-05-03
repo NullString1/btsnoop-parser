@@ -2,6 +2,13 @@
 name = "btsnoop_parser"
 version = "1.0.0"
 edition = "2024"
+authors = ["nullstring1 <daniel@nullstring.one>"]
+description = "Rust parser for the btsnoop format"
+repository = "https://github.com/nullstring/btsnoop_parser"
+readme = "README.md"
+keywords = ["parser", "bluetooth", "btsnoop", "android", "GATT"]
+categories = ["parsing"]
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]

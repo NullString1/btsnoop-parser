@@ -85,7 +85,7 @@ unsafe extern "system" fn JNI_OnLoad(vm: jni::JavaVM, _: c_void) -> jint {
         Err(_) => return -1,
     };
 
-    let class_name = "one/nullstring/btletool/data/BTSnoopParser";
+    let class_name = "one/nullstring/btsnoop_parser/BTSnoopParser";
     let clazz = match env.find_class(class_name) {
         Ok(class) => class,
         Err(_) => return -1,

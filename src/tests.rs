@@ -16,9 +16,10 @@ mod tests {
 
     #[test]
     fn test_parse_btsnoop_file() -> Result<(), Box<dyn std::error::Error>> {
-        let btsnoop_file_path = "btsnoop_hci.log";
-        let bytes = std::fs::read(btsnoop_file_path)?;
-        let btsnoop_file = parse_btsnoop_file(bytes)?;
+        let btsnoop_file_path: &str = "btsnoop_hci.log";
+        let bytes: Vec<u8> = std::fs::read(btsnoop_file_path)?;
+        let btsnoop_file: BTSnoopFile = parse_btsnoop_file(bytes)?;
+        println!("Packet 1: {}", btsnoop_file.packets[0]);
         assert_eq!(btsnoop_file.header.identifier, *b"btsnoop\0");
         assert_eq!(btsnoop_file.header.version, 1);
         Ok(())
